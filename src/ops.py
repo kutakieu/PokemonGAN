@@ -1,6 +1,6 @@
 # RESUED CODE FROM https://github.com/carpedm20/DCGAN-tensorflow/blob/master/ops.py
 import math
-import numpy as np 
+import numpy as np
 import tensorflow as tf
 
 from tensorflow.python.framework import ops
@@ -25,12 +25,12 @@ class batch_norm(object):
 									initializer=tf.constant_initializer(0.))
 				self.gamma = tf.get_variable("gamma", [shape[-1]],
 									initializer=tf.random_normal_initializer(1., 0.02))
-				
+
 				try:
 					batch_mean, batch_var = tf.nn.moments(x, [0, 1, 2], name='moments')
 				except:
 					batch_mean, batch_var = tf.nn.moments(x, [0, 1], name='moments')
-					
+
 				ema_apply_op = self.ema.apply([batch_mean, batch_var])
 				self.ema_mean, self.ema_var = self.ema.average(batch_mean), self.ema.average(batch_var)
 
@@ -65,7 +65,7 @@ def conv_cond_concat(x, y):
 	y_shapes = y.get_shape()
 	return tf.concat(3, [x, y*tf.ones([x_shapes[0], x_shapes[1], x_shapes[2], y_shapes[3]])])
 
-def conv2d(input_, output_dim, 
+def conv2d(input_, output_dim,
 		   k_h=5, k_w=5, d_h=2, d_w=2, stddev=0.02,
 		   name="conv2d"):
 	with tf.variable_scope(name):
@@ -85,7 +85,7 @@ def deconv2d(input_, output_shape,
 		# filter : [height, width, output_channels, in_channels]
 		w = tf.get_variable('w', [k_h, k_h, output_shape[-1], input_.get_shape()[-1]],
 							initializer=tf.random_normal_initializer(stddev=stddev))
-		
+
 		try:
 			deconv = tf.nn.conv2d_transpose(input_, w, output_shape=output_shape,
 								strides=[1, d_h, d_w, 1])
@@ -118,3 +118,31 @@ def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=
 			return tf.matmul(input_, matrix) + bias, matrix, bias
 		else:
 			return tf.matmul(input_, matrix) + bias
+
+def rnn(input_, output_size, embedding_size, n_hidden, stddev=0.02, bias_start=0.0):
+
+	with tf.variable_scope("rnn4name"):
+		word_embeddings = tf.get_variable(“word_embeddings”, [26, embedding_size])
+		embedded_word_ids = tf.nn.embedding_lookup(word_embeddings, word_ids)
+        # Forward direction cell
+        lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
+        # lstm_fw_cell = tf.nn.rnn_cell.GRUCell(n_hidden, reuse=False)
+
+        # Backward direction cell
+        lstm_bw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
+        # lstm_bw_cell = tf.nn.rnn_cell.GRUCell(n_hidden, reuse=False)
+
+        lstm_fw_cell = tf.contrib.rnn.DropoutWrapper(lstm_fw_cell, output_keep_prob=dropout)
+        lstm_bw_cell = tf.contrib.rnn.DropoutWrapper(lstm_bw_cell, output_keep_prob=dropout)
+
+        outputs, states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
+
+        fw_output = outputs[0]
+        bw_output = outputs[1]
+        lstm_output = tf.concat((fw_output, bw_output), 2)
+
+		matrix = tf.get_variable("Weight", [n_hidden, output_size], tf.float32, tf.random_normal_initializer(stddev=stddev))
+
+		bias = tf.get_variable("bias", [output_size], initializer=tf.constant_initializer(bias_start))
+
+		return tf.matmul(lstm_output[:,-1,:], matrix) + bias

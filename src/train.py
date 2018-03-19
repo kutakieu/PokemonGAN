@@ -3,7 +3,6 @@ import numpy as np
 import model
 import argparse
 import pickle
-from os.path import join
 import h5py
 from Utils import image_processing
 import scipy.misc
@@ -11,13 +10,31 @@ import random
 import json
 import os
 import shutil
+from os import listdir
+from os.path import isfile, join
+from PIL import Image
+
+path2training_data = "../data/training/"
+filenames_tmp = [f for f in listdir(path2training_data) if isfile(join(path2training_data, f))]
+images = []
+pokemon_names = []
+for file_tmp in filenames_tmp:
+	if file_tmp.split(".")[1] = "png":
+		filenames.append(file_tmp)
+		pokemon_names.append(file_tmp.split(".")[0])
 
 def main():
 	parser = argparse.ArgumentParser()
+	parser.add_argument('--rnn_hidden', type=int, default=200,
+					   help='Number of nodes in the rnn hidden layer')
+
 	parser.add_argument('--z_dim', type=int, default=100,
 					   help='Noise dimension')
 
-	parser.add_argument('--t_dim', type=int, default=256,
+	parser.add_argument('--word_dim', type=int, default=256,
+					   help='Word embedding matrix dimension')
+
+   parser.add_argument('--t_dim', type=int, default=256,
 					   help='Text feature dimension')
 
 	parser.add_argument('--batch_size', type=int, default=64,
@@ -61,6 +78,8 @@ def main():
 
 	args = parser.parse_args()
 	model_options = {
+		'rnn_hidden' : args.rnn_hidden,
+		'word_dim' : args.word_dim,
 		'z_dim' : args.z_dim,
 		't_dim' : args.t_dim,
 		'batch_size' : args.batch_size,
@@ -177,6 +196,18 @@ def save_for_vis(data_dir, real_images, generated_images, image_files):
 
 def get_training_batch(batch_no, batch_size, image_size, z_dim,
 	caption_vector_length, split, data_dir, data_set, loaded_data = None):
+
+	# path2training_data = "../data/training/"
+
+	real_images = np.zeros((batch_size, 64, 64, 3))
+	wrong_images = np.zeros((batch_size, 64, 64, 3))
+	captions = np.zeros((batch_size, caption_vector_length))
+	# wrong_captions = np.zeros((batch_size, caption_vector_length))
+
+	for i in batch_size:
+
+
+
 	if data_set == 'mscoco':
 		with h5py.File( join(data_dir, 'tvs/'+split + '_tvs_' + str(batch_no))) as hf:
 			caption_vectors = np.array(hf.get('tv'))
