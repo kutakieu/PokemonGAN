@@ -14,15 +14,6 @@ from os import listdir
 from os.path import isfile, join
 from PIL import Image
 
-path2training_data = "../data/training/"
-filenames_tmp = [f for f in listdir(path2training_data) if isfile(join(path2training_data, f))]
-images = []
-pokemon_names = []
-for file_tmp in filenames_tmp:
-	if file_tmp.split(".")[1] = "png":
-		filenames.append(file_tmp)
-		pokemon_names.append(file_tmp.split(".")[0])
-
 def main():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--rnn_hidden', type=int, default=200,
@@ -37,10 +28,10 @@ def main():
    parser.add_argument('--t_dim', type=int, default=256,
 					   help='Text feature dimension')
 
-	parser.add_argument('--batch_size', type=int, default=64,
+	parser.add_argument('--batch_size', type=int, default=2,
 					   help='Batch Size')
 
-	parser.add_argument('--image_size', type=int, default=64,
+	parser.add_argument('--image_size', type=int, default=32,
 					   help='Image Size a, a x a')
 
 	parser.add_argument('--gf_dim', type=int, default=64,
@@ -52,7 +43,7 @@ def main():
 	parser.add_argument('--gfc_dim', type=int, default=1024,
 					   help='Dimension of gen untis for for fully connected layer 1024')
 
-	parser.add_argument('--caption_vector_length', type=int, default=2400,
+	parser.add_argument('--caption_vector_length', type=int, default=20,
 					   help='Caption Vector Length')
 
 	parser.add_argument('--data_dir', type=str, default="Data",
@@ -108,9 +99,12 @@ def main():
 
 	for i in range(args.epochs):
 		batch_no = 0
-		while batch_no*args.batch_size < loaded_data['data_length']:
+		index4shuffle = [i for i in range(len(loaded_data))]
+		random.shuffle(index4shuffle)
+
+		while (batch_no+1)*args.batch_size < len(loaded_data)):
 			real_images, wrong_images, caption_vectors, z_noise, image_files = get_training_batch(batch_no, args.batch_size,
-				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, loaded_data)
+				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], loaded_data)
 
 			# DISCR UPDATE
 			check_ts = [ checks['d_loss1'] , checks['d_loss2'], checks['d_loss3']]
@@ -155,6 +149,32 @@ def main():
 			save_path = saver.save(sess, "Data/Models/model_after_{}_epoch_{}.ckpt".format(args.data_set, i))
 
 def load_training_data(data_dir, data_set):
+
+	path2training_data = "../data/training/"
+	filenames = [f for f in listdir(path2training_data) if isfile(join(path2training_data, f))]
+	images = []
+	pokemon_names = []
+	data = []
+	for filename in filenames:
+		if file_tmp.split(".")[1] = "jpg":
+			# filenames.append(filename)
+			current_data = {}
+			# pokemon_names.append(filename.split(".")[0])
+			name_numerical = np.zeros((args.caption_vector_length))
+			current_name = filename.split(".")[0]
+			for i, c in enumerate(current_name):
+				c = c.lower()
+				name_numerical[i] = int(ord(c)-96)
+
+			current_data["name"] = filename.split(".")[0]
+			current_data["name_numerical"] = name_numerical
+			# images.append(Image.open(path2training_data + filename).resize(args.image_size))
+			current_data["image"] = np.asarray(Image.open(path2training_data + filename).resize(args.image_size))
+			data.append(current_data)
+
+	return data
+
+
 	if data_set == 'flowers':
 		h = h5py.File(join(data_dir, 'flower_tv.hdf5'))
 		flower_captions = {}
@@ -195,17 +215,26 @@ def save_for_vis(data_dir, real_images, generated_images, image_files):
 
 
 def get_training_batch(batch_no, batch_size, image_size, z_dim,
-	caption_vector_length, split, data_dir, data_set, loaded_data = None):
+	caption_vector_length, split, data_dir, data_set, index4shuffle, loaded_data = None):
 
 	# path2training_data = "../data/training/"
 
 	real_images = np.zeros((batch_size, 64, 64, 3))
 	wrong_images = np.zeros((batch_size, 64, 64, 3))
 	captions = np.zeros((batch_size, caption_vector_length))
+	image_files = []
 	# wrong_captions = np.zeros((batch_size, caption_vector_length))
 
-	for i in batch_size:
+	for i in range(batch_size):
+		current_data = loaded_data[index4shuffle[i]]
+		real_images[i] = current_data["image"]
+		random_index = random.randint(0,index4shuffle[i]-1) if index4shuffle[i]>int(len(loaded_data)/2) else random.randint(index4shuffle[i]+1, len(loaded_data)-1)
+		wrong_images[i] = loaded_data[random_index]["image"]
+		captions[i] = current_data["name_numerical"]
+		image_files.append(current_data["name"])
 
+	z_noise = np.random.uniform(-1, 1, [batch_size, z_dim])
+	return real_images, wrong_images, captions, z_noise, image_files
 
 
 	if data_set == 'mscoco':

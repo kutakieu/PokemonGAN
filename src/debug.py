@@ -6,19 +6,21 @@ from scipy import misc
 
 def main():
 
-    path2training_data = "../data/training/"
+    path2training_data = "../data/training/image_151/"
     path2save = "../data/save/"
 
     filenames_tmp = [f for f in listdir(path2training_data) if isfile(join(path2training_data, f))]
     images = []
     pokemon_names = []
-    size = [500,500]
+    size = [600,600]
     for filename in filenames_tmp:
     	if filename.split(".")[1] == "png":
-            print("here")
+
+            pokemon_name = filename.split(".")[0][3:]
+            print(pokemon_name)
             img = Image.open(path2training_data + filename).resize(size)
-            img.save(path2save + filename.split(".")[0] + ".png")
-            
+            # img.save(path2save + pokemon_name + ".png")
+
             img_resized = np.asarray(img).copy()
 
             for i in range(size[0]):
@@ -30,7 +32,7 @@ def main():
 
             img_resized = img_resized.convert('RGB')
 
-            img_resized.save(path2save + filename.split(".")[0] + ".jpg")
+            img_resized.save(path2save + pokemon_name + ".jpg")
 
 
 
