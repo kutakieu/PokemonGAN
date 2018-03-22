@@ -119,29 +119,29 @@ def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=
 		else:
 			return tf.matmul(input_, matrix) + bias
 
-def rnn(input_, output_size, embedding_size, n_hidden, stddev=0.02, bias_start=0.0):
+def rnn(input_, output_size, embedding_size, n_hidden, stddev=0.02, bias_start=0.0, dropout_rate=0.5, reuse=None):
 
-	with tf.variable_scope("rnn4name"):
-		word_embeddings = tf.get_variable(“word_embeddings”, [26, embedding_size])
-		embedded_word_ids = tf.nn.embedding_lookup(word_embeddings, word_ids)
+	with tf.variable_scope("rnn4name", reuse=reuse):
+		word_embeddings = tf.get_variable("word_embeddings", [26, embedding_size])
+		embedded_word_output = tf.nn.embedding_lookup(word_embeddings, input_)
         # Forward direction cell
-        lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
+		lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
         # lstm_fw_cell = tf.nn.rnn_cell.GRUCell(n_hidden, reuse=False)
 
         # Backward direction cell
-        lstm_bw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
+		lstm_bw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
         # lstm_bw_cell = tf.nn.rnn_cell.GRUCell(n_hidden, reuse=False)
 
-        lstm_fw_cell = tf.contrib.rnn.DropoutWrapper(lstm_fw_cell, output_keep_prob=dropout)
-        lstm_bw_cell = tf.contrib.rnn.DropoutWrapper(lstm_bw_cell, output_keep_prob=dropout)
+		lstm_fw_cell = tf.contrib.rnn.DropoutWrapper(lstm_fw_cell, output_keep_prob=dropout_rate)
+		lstm_bw_cell = tf.contrib.rnn.DropoutWrapper(lstm_bw_cell, output_keep_prob=dropout_rate)
 
-        outputs, states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, inputs, dtype=tf.float32)
+		outputs, states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, embedded_word_output, dtype=tf.float32)
 
-        fw_output = outputs[0]
-        bw_output = outputs[1]
-        lstm_output = tf.concat((fw_output, bw_output), 2)
+		fw_output = outputs[0]
+		bw_output = outputs[1]
+		lstm_output = tf.concat((fw_output, bw_output), 2)
 
-		matrix = tf.get_variable("Weight", [n_hidden, output_size], tf.float32, tf.random_normal_initializer(stddev=stddev))
+		matrix = tf.get_variable("Weight", [n_hidden*2, output_size], tf.float32, tf.random_normal_initializer(stddev=stddev))
 
 		bias = tf.get_variable("bias", [output_size], initializer=tf.constant_initializer(bias_start))
 

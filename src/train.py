@@ -4,7 +4,7 @@ import model
 import argparse
 import pickle
 import h5py
-from Utils import image_processing
+# from Utils import image_processing
 import scipy.misc
 import random
 import json
@@ -25,7 +25,7 @@ def main():
 	parser.add_argument('--word_dim', type=int, default=256,
 					   help='Word embedding matrix dimension')
 
-   parser.add_argument('--t_dim', type=int, default=256,
+	parser.add_argument('--t_dim', type=int, default=256,
 					   help='Text feature dimension')
 
 	parser.add_argument('--batch_size', type=int, default=2,
@@ -102,7 +102,7 @@ def main():
 		index4shuffle = [i for i in range(len(loaded_data))]
 		random.shuffle(index4shuffle)
 
-		while (batch_no+1)*args.batch_size < len(loaded_data)):
+		while (batch_no+1)*args.batch_size < len(loaded_data):
 			real_images, wrong_images, caption_vectors, z_noise, image_files = get_training_batch(batch_no, args.batch_size,
 				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], loaded_data)
 
@@ -156,7 +156,7 @@ def load_training_data(data_dir, data_set):
 	pokemon_names = []
 	data = []
 	for filename in filenames:
-		if file_tmp.split(".")[1] = "jpg":
+		if file_tmp.split(".")[1] == "jpg":
 			# filenames.append(filename)
 			current_data = {}
 			# pokemon_names.append(filename.split(".")[0])
