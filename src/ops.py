@@ -20,7 +20,7 @@ class batch_norm(object):
 		shape = x.get_shape().as_list()
 
 		if train:
-			with tf.variable_scope(self.name) as scope:
+			with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE) as scope:
 				self.beta = tf.get_variable("beta", [shape[-1]],
 									initializer=tf.constant_initializer(0.))
 				self.gamma = tf.get_variable("gamma", [shape[-1]],
@@ -145,4 +145,4 @@ def rnn(input_, output_size, embedding_size, n_hidden, stddev=0.02, bias_start=0
 
 		bias = tf.get_variable("bias", [output_size], initializer=tf.constant_initializer(bias_start))
 
-		return tf.matmul(lstm_output[:,-1,:], matrix) + bias
+	return tf.matmul(lstm_output[:,-1,:], matrix) + bias

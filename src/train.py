@@ -3,7 +3,7 @@ import numpy as np
 import model
 import argparse
 import pickle
-import h5py
+# import h5py
 # from Utils import image_processing
 import scipy.misc
 import random
@@ -85,6 +85,7 @@ def main():
 	gan = model.GAN(model_options)
 	input_tensors, variables, loss, outputs, checks = gan.build_model()
 
+	# with tf.variable_scope("Adam", reuse=False):
 	d_optim = tf.train.AdamOptimizer(args.learning_rate, beta1 = args.beta1).minimize(loss['d_loss'], var_list=variables['d_vars'])
 	g_optim = tf.train.AdamOptimizer(args.learning_rate, beta1 = args.beta1).minimize(loss['g_loss'], var_list=variables['g_vars'])
 
