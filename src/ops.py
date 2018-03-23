@@ -121,8 +121,10 @@ def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=
 
 def rnn(input_, output_size, embedding_size, n_hidden, stddev=0.02, bias_start=0.0, dropout_rate=0.5, reuse=None):
 
-	with tf.variable_scope("rnn4name", reuse=reuse):
-		word_embeddings = tf.get_variable("word_embeddings", [26, embedding_size])
+	with tf.variable_scope("d_g_rnn4name", reuse=reuse):
+	# with tf.variable_scope("d_g_rnn4name", reuse=tf.AUTO_REUSE):
+
+		word_embeddings = tf.get_variable("word_embeddings", [150, embedding_size])
 		embedded_word_output = tf.nn.embedding_lookup(word_embeddings, input_)
         # Forward direction cell
 		lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
@@ -145,4 +147,4 @@ def rnn(input_, output_size, embedding_size, n_hidden, stddev=0.02, bias_start=0
 
 		bias = tf.get_variable("bias", [output_size], initializer=tf.constant_initializer(bias_start))
 
-	return tf.matmul(lstm_output[:,-1,:], matrix) + bias
+		return tf.matmul(lstm_output[:,-1,:], matrix) + bias

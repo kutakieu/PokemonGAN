@@ -46,7 +46,7 @@ def main():
 	parser.add_argument('--caption_vector_length', type=int, default=20,
 					   help='Caption Vector Length')
 
-	parser.add_argument('--data_dir', type=str, default="Data",
+	parser.add_argument('--data_dir', type=str, default="../data",
 					   help='Data Directory')
 
 	parser.add_argument('--learning_rate', type=float, default=0.0002,
@@ -83,22 +83,28 @@ def main():
 
 
 	gan = model.GAN(model_options)
-	input_tensors, variables, loss, outputs, checks = gan.build_model()
+	with tf.variable_scope(tf.get_variable_scope()) as scope:
+		input_tensors, variables, loss, outputs, checks = gan.build_model()
+
+
 
 	# with tf.variable_scope("Adam", reuse=False):
-	d_optim = tf.train.AdamOptimizer(args.learning_rate, beta1 = args.beta1).minimize(loss['d_loss'], var_list=variables['d_vars'])
-	g_optim = tf.train.AdamOptimizer(args.learning_rate, beta1 = args.beta1).minimize(loss['g_loss'], var_list=variables['g_vars'])
+	# d_optim = tf.train.AdamOptimizer().minimize(loss['d_loss'], var_list=variables['d_vars'], name='Adam_d')
+	# g_optim = tf.train.AdamOptimizer().minimize(loss['g_loss'], var_list=variables['g_vars'], name='Adam_g')
+	d_optim = tf.train.AdamOptimizer(args.learning_rate, beta1 = args.beta1).minimize(loss['d_loss'], var_list=variables['d_vars'], name='Adam_d')
+	g_optim = tf.train.AdamOptimizer(args.learning_rate, beta1 = args.beta1).minimize(loss['g_loss'], var_list=variables['g_vars'], name='Adam_g')
 
 	sess = tf.InteractiveSession()
-	tf.initialize_all_variables().run()
+	tf.global_variables_initializer().run()
 
 	saver = tf.train.Saver()
 	if args.resume_model:
 		saver.restore(sess, args.resume_model)
 
-	loaded_data = load_training_data(args.data_dir, args.data_set)
+	loaded_data = load_training_data(args.data_dir, args.data_set, args.caption_vector_length, args.image_size)
 
 	for i in range(args.epochs):
+		print("epoch" + str(i))
 		batch_no = 0
 		index4shuffle = [i for i in range(len(loaded_data))]
 		random.shuffle(index4shuffle)
@@ -106,6 +112,7 @@ def main():
 		while (batch_no+1)*args.batch_size < len(loaded_data):
 			real_images, wrong_images, caption_vectors, z_noise, image_files = get_training_batch(batch_no, args.batch_size,
 				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], loaded_data)
+			print(caption_vectors)
 
 			# DISCR UPDATE
 			check_ts = [ checks['d_loss1'] , checks['d_loss2'], checks['d_loss3']]
@@ -140,37 +147,38 @@ def main():
 					input_tensors['t_z'] : z_noise,
 				})
 
-			print("LOSSES", d_loss, g_loss, batch_no, i, len(loaded_data['image_list'])/ args.batch_size)
+			# print("LOSSES")
+			print("d_loss=" + str(d_loss) + ", g_loss=" + str(g_loss))
 			batch_no += 1
 			if (batch_no % args.save_every) == 0:
 				print("Saving Images, Model")
 				save_for_vis(args.data_dir, real_images, gen, image_files)
-				save_path = saver.save(sess, "Data/Models/latest_model_{}_temp.ckpt".format(args.data_set))
+				save_path = saver.save(sess, "../models/latest_model_{}_temp.ckpt".format(args.data_set))
 		if i%5 == 0:
-			save_path = saver.save(sess, "Data/Models/model_after_{}_epoch_{}.ckpt".format(args.data_set, i))
+			save_path = saver.save(sess, "../models/model_after_{}_epoch_{}.ckpt".format(args.data_set, i))
 
-def load_training_data(data_dir, data_set):
+def load_training_data(data_dir, data_set, caption_vector_length, image_size):
 
-	path2training_data = "../data/training/"
+	path2training_data = "../data/save/"
 	filenames = [f for f in listdir(path2training_data) if isfile(join(path2training_data, f))]
 	images = []
 	pokemon_names = []
 	data = []
 	for filename in filenames:
-		if file_tmp.split(".")[1] == "jpg":
+		if filename.split(".")[1] == "jpg":
 			# filenames.append(filename)
 			current_data = {}
 			# pokemon_names.append(filename.split(".")[0])
-			name_numerical = np.zeros((args.caption_vector_length))
+			name_numerical = np.zeros((caption_vector_length))
 			current_name = filename.split(".")[0]
 			for i, c in enumerate(current_name):
 				c = c.lower()
-				name_numerical[i] = int(ord(c)-96)
+				name_numerical[i] = int(ord(c))
 
 			current_data["name"] = filename.split(".")[0]
 			current_data["name_numerical"] = name_numerical
 			# images.append(Image.open(path2training_data + filename).resize(args.image_size))
-			current_data["image"] = np.asarray(Image.open(path2training_data + filename).resize(args.image_size))
+			current_data["image"] = np.asarray(Image.open(path2training_data + filename).resize([image_size,image_size]))
 			data.append(current_data)
 
 	return data
@@ -220,8 +228,8 @@ def get_training_batch(batch_no, batch_size, image_size, z_dim,
 
 	# path2training_data = "../data/training/"
 
-	real_images = np.zeros((batch_size, 64, 64, 3))
-	wrong_images = np.zeros((batch_size, 64, 64, 3))
+	real_images = np.zeros((batch_size, image_size, image_size, 3))
+	wrong_images = np.zeros((batch_size, image_size, image_size, 3))
 	captions = np.zeros((batch_size, caption_vector_length))
 	image_files = []
 	# wrong_captions = np.zeros((batch_size, caption_vector_length))

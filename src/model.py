@@ -50,6 +50,7 @@ class GAN:
 		d_loss = d_loss1 + d_loss2 + d_loss3
 
 		t_vars = tf.trainable_variables()
+		# print(t_vars)
 		d_vars = [var for var in t_vars if 'd_' in var.name]
 		g_vars = [var for var in t_vars if 'g_' in var.name]
 
