@@ -35,11 +35,13 @@ class GAN:
 
 		t_z = tf.placeholder('float32', [self.options['batch_size'], self.options['z_dim']])
 
-		fake_image = self.generator(t_z, t_real_caption)
+		# attributes = tf.placeholder('int32', )
 
-		disc_real_image, disc_real_image_logits   = self.discriminator(t_real_image, t_real_caption)
-		disc_wrong_image, disc_wrong_image_logits   = self.discriminator(t_wrong_image, t_real_caption, reuse = True)
-		disc_fake_image, disc_fake_image_logits   = self.discriminator(fake_image, t_real_caption, reuse = True)
+		fake_image = self.generator(t_z)
+
+		disc_real_image, disc_real_image_logits   = self.discriminator(t_real_image)
+		disc_wrong_image, disc_wrong_image_logits   = self.discriminator(t_wrong_image, reuse = True)
+		disc_fake_image, disc_fake_image_logits   = self.discriminator(fake_image, reuse = True)
 
 		g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_image_logits, labels=tf.ones_like(disc_fake_image)))
 
@@ -90,7 +92,7 @@ class GAN:
 		img_size = self.options['image_size']
 		t_real_caption = tf.placeholder('float32', [self.options['batch_size'], self.options['caption_vector_length']], name = 'real_caption_input')
 		t_z = tf.placeholder('float32', [self.options['batch_size'], self.options['z_dim']])
-		fake_image = self.sampler(t_z, t_real_caption)
+		fake_image = self.sampler(t_z)
 
 		input_tensors = {
 			't_real_caption' : t_real_caption,
@@ -104,16 +106,19 @@ class GAN:
 		return input_tensors, outputs
 
 	# Sample Images for a text embedding
-	def sampler(self, t_z, t_text_embedding):
+	def sampler(self, t_z, t_text_embedding=None):
 		tf.get_variable_scope().reuse_variables()
 
 		s = self.options['image_size']
 		s2, s4, s8, s16 = int(s/2), int(s/4), int(s/8), int(s/16)
 		""" dim 2400 -> 256 """
 		# reduced_text_embedding = ops.lrelu( ops.linear(t_text_embedding, self.options['t_dim'], 'g_embedding') )
-		reduced_text_embedding = rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'])
+		if t_text_embedding == None:
+			z_concat = t_z
+		else:
+			reduced_text_embedding = rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'])
+			z_concat = tf.concat([t_z, reduced_text_embedding], 1)
 
-		z_concat = tf.concat([t_z, reduced_text_embedding], 1)
 		z_ = ops.linear(z_concat, self.options['gf_dim']*8*s16*s16, 'g_h0_lin')
 		h0 = tf.reshape(z_, [-1, s16, s16, self.options['gf_dim'] * 8])
 		h0 = tf.nn.relu(self.g_bn0(h0, train = False))
@@ -132,15 +137,18 @@ class GAN:
 		return (tf.tanh(h4)/2. + 0.5)
 
 	# GENERATOR IMPLEMENTATION based on : https://github.com/carpedm20/DCGAN-tensorflow/blob/master/model.py
-	def generator(self, t_z, t_text_embedding):
+	def generator(self, t_z, t_text_embedding=None):
 
 		s = self.options['image_size']
 		s2, s4, s8, s16 = int(s/2), int(s/4), int(s/8), int(s/16)
 
 		# reduced_text_embedding = ops.lrelu( ops.linear(t_text_embedding, self.options['t_dim'], 'g_embedding') )
-		reduced_text_embedding = ops.rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'])
+		if t_text_embedding == None:
+			z_concat = t_z
+		else:
+			reduced_text_embedding = rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'])
+			z_concat = tf.concat([t_z, reduced_text_embedding], 1)
 
-		z_concat = tf.concat([t_z, reduced_text_embedding], 1)
 		z_ = ops.linear(z_concat, self.options['gf_dim']*8*s16*s16, 'g_h0_lin')
 		h0 = tf.reshape(z_, [-1, s16, s16, self.options['gf_dim'] * 8])
 		h0 = tf.nn.relu(self.g_bn0(h0))
@@ -159,7 +167,7 @@ class GAN:
 		return (tf.tanh(h4)/2. + 0.5)
 
 	# DISCRIMINATOR IMPLEMENTATION based on : https://github.com/carpedm20/DCGAN-tensorflow/blob/master/model.py
-	def discriminator(self, image, t_text_embedding, reuse=False):
+	def discriminator(self, image, t_text_embedding=None, reuse=False):
 		if reuse:
 			tf.get_variable_scope().reuse_variables()
 
@@ -171,12 +179,16 @@ class GAN:
 		# ADD TEXT EMBEDDING TO THE NETWORK
 		# TODO: replace this part with charcter base RNN
 		# reduced_text_embeddings = ops.lrelu(ops.linear(t_text_embedding, self.options['t_dim'], 'd_embedding'))
-		reduced_text_embeddings = ops.rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'], reuse=True)
-		reduced_text_embeddings = tf.expand_dims(reduced_text_embeddings,1)
-		reduced_text_embeddings = tf.expand_dims(reduced_text_embeddings,2)
-		tiled_embeddings = tf.tile(reduced_text_embeddings, [1,2,2,1], name='tiled_embeddings')
 
-		h3_concat = tf.concat([h3, tiled_embeddings], 3, name='h3_concat')
+		if t_text_embedding == None:
+			h3_concat = h3
+		else:
+			reduced_text_embeddings = ops.rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'], reuse=True)
+			reduced_text_embeddings = tf.expand_dims(reduced_text_embeddings,1)
+			reduced_text_embeddings = tf.expand_dims(reduced_text_embeddings,2)
+			tiled_embeddings = tf.tile(reduced_text_embeddings, [1,2,2,1], name='tiled_embeddings')
+			h3_concat = tf.concat([h3, tiled_embeddings], 3, name='h3_concat')
+
 		h3_new = ops.lrelu( self.d_bn4(ops.conv2d(h3_concat, self.options['df_dim']*8, 1,1,1,1, name = 'd_h3_conv_new'))) #4
 
 		h4 = ops.linear(tf.reshape(h3_new, [self.options['batch_size'], -1]), 1, 'd_h3_lin')
