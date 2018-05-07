@@ -34,20 +34,26 @@ class GAN:
 		t_real_caption = tf.placeholder('int32', [self.options['batch_size'], self.options['caption_vector_length']], name = 'real_caption_input')
 
 		t_z = tf.placeholder('float32', [self.options['batch_size'], self.options['z_dim']])
+		t_attributes = tf.placeholder('float32', [self.options['batch_size'], self.options['num_attributes']])
 
-		# attributes = tf.placeholder('int32', )
+		fake_image = self.generator(t_z, t_attributes)
 
-		fake_image = self.generator(t_z)
+		disc_real_image, disc_real_image_logits   = self.discriminator(t_real_image, t_attributes)
+		disc_wrong_image, disc_wrong_image_logits   = self.discriminator(t_wrong_image, t_attributes, reuse=True)
+		disc_fake_image, disc_fake_image_logits   = self.discriminator(fake_image, t_attributes, reuse=True)
 
-		disc_real_image, disc_real_image_logits   = self.discriminator(t_real_image)
-		disc_wrong_image, disc_wrong_image_logits   = self.discriminator(t_wrong_image, reuse = True)
-		disc_fake_image, disc_fake_image_logits   = self.discriminator(fake_image, reuse = True)
+		#
+		# g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_image_logits, labels=tf.ones_like(disc_fake_image)))
+		#
+		# d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_real_image_logits, labels=tf.ones_like(disc_real_image)))
+		# d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_wrong_image_logits, labels=tf.zeros_like(disc_wrong_image)))
+		# d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_image_logits, labels=tf.zeros_like(disc_fake_image)))
 
-		g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_image_logits, labels=tf.ones_like(disc_fake_image)))
+		g_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_image_logits, labels=t_attributes))
 
-		d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_real_image_logits, labels=tf.ones_like(disc_real_image)))
-		d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_wrong_image_logits, labels=tf.zeros_like(disc_wrong_image)))
-		d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_image_logits, labels=tf.zeros_like(disc_fake_image)))
+		d_loss1 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_real_image_logits, labels=t_attributes))
+		d_loss2 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_wrong_image_logits, labels=t_attributes))
+		d_loss3 = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake_image_logits, labels=t_attributes))
 
 		d_loss = d_loss1 + d_loss2 + d_loss3
 
@@ -60,7 +66,8 @@ class GAN:
 			't_real_image' : t_real_image,
 			't_wrong_image' : t_wrong_image,
 			't_real_caption' : t_real_caption,
-			't_z' : t_z
+			't_z' : t_z,
+			't_attributes' : t_attributes
 		}
 
 		variables = {
@@ -106,7 +113,7 @@ class GAN:
 		return input_tensors, outputs
 
 	# Sample Images for a text embedding
-	def sampler(self, t_z, t_text_embedding=None):
+	def sampler(self, t_z, t_attributes=None, t_text_embedding=None):
 		tf.get_variable_scope().reuse_variables()
 
 		s = self.options['image_size']
@@ -114,7 +121,10 @@ class GAN:
 		""" dim 2400 -> 256 """
 		# reduced_text_embedding = ops.lrelu( ops.linear(t_text_embedding, self.options['t_dim'], 'g_embedding') )
 		if t_text_embedding == None:
-			z_concat = t_z
+			if t_attributes == None:
+				z_concat = t_z
+			else:
+				z_concat = tf.concat([t_z, t_attributes], 1)
 		else:
 			reduced_text_embedding = rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'])
 			z_concat = tf.concat([t_z, reduced_text_embedding], 1)
@@ -137,14 +147,17 @@ class GAN:
 		return (tf.tanh(h4)/2. + 0.5)
 
 	# GENERATOR IMPLEMENTATION based on : https://github.com/carpedm20/DCGAN-tensorflow/blob/master/model.py
-	def generator(self, t_z, t_text_embedding=None):
+	def generator(self, t_z, t_attributes=None, t_text_embedding=None):
 
 		s = self.options['image_size']
 		s2, s4, s8, s16 = int(s/2), int(s/4), int(s/8), int(s/16)
 
 		# reduced_text_embedding = ops.lrelu( ops.linear(t_text_embedding, self.options['t_dim'], 'g_embedding') )
 		if t_text_embedding == None:
-			z_concat = t_z
+			if t_attributes == None:
+				z_concat = t_z
+			else:
+				z_concat = tf.concat([t_z, t_attributes], 1)
 		else:
 			reduced_text_embedding = rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'])
 			z_concat = tf.concat([t_z, reduced_text_embedding], 1)
@@ -167,7 +180,7 @@ class GAN:
 		return (tf.tanh(h4)/2. + 0.5)
 
 	# DISCRIMINATOR IMPLEMENTATION based on : https://github.com/carpedm20/DCGAN-tensorflow/blob/master/model.py
-	def discriminator(self, image, t_text_embedding=None, reuse=False):
+	def discriminator(self, image, t_attributes=None, t_text_embedding=None, reuse=False):
 		if reuse:
 			tf.get_variable_scope().reuse_variables()
 
@@ -181,7 +194,13 @@ class GAN:
 		# reduced_text_embeddings = ops.lrelu(ops.linear(t_text_embedding, self.options['t_dim'], 'd_embedding'))
 
 		if t_text_embedding == None:
-			h3_concat = h3
+			if t_attributes == None:
+				h3_concat = h3
+			else:
+				t_attributes = tf.expand_dims(t_attributes,1)
+				t_attributes = tf.expand_dims(t_attributes,2)
+				tiled_attributes = tf.tile(t_attributes, [1,2,2,1], name='tiled_attributes')
+				h3_concat = tf.concat([h3, tiled_attributes], 3, name='h3_concat')
 		else:
 			reduced_text_embeddings = ops.rnn(t_text_embedding, self.options['t_dim'], self.options['word_dim'], self.options['rnn_hidden'], reuse=True)
 			reduced_text_embeddings = tf.expand_dims(reduced_text_embeddings,1)
@@ -191,6 +210,7 @@ class GAN:
 
 		h3_new = ops.lrelu( self.d_bn4(ops.conv2d(h3_concat, self.options['df_dim']*8, 1,1,1,1, name = 'd_h3_conv_new'))) #4
 
-		h4 = ops.linear(tf.reshape(h3_new, [self.options['batch_size'], -1]), 1, 'd_h3_lin')
+		# h4 = ops.linear(tf.reshape(h3_new, [self.options['batch_size'], -1]), 1, 'd_h3_lin')
+		h4 = ops.linear(tf.reshape(h3_new, [self.options['batch_size'], -1]), self.options['num_attributes'], 'd_h3_lin')
 
 		return tf.nn.sigmoid(h4), h4

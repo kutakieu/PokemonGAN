@@ -22,6 +22,9 @@ def main():
 	parser.add_argument('--z_dim', type=int, default=100,
 					   help='Noise dimension')
 
+	parser.add_argument('--num_attributes', type=int, default=18,
+					   help='Number of features of each Pokemon; Types, HP, Attack, Defense, SpAttack, SpDefense, Speed')
+
 	parser.add_argument('--word_dim', type=int, default=256,
 					   help='Word embedding matrix dimension')
 
@@ -72,6 +75,7 @@ def main():
 		'rnn_hidden' : args.rnn_hidden,
 		'word_dim' : args.word_dim,
 		'z_dim' : args.z_dim,
+		'num_attributes' : args.num_attributes,
 		't_dim' : args.t_dim,
 		'batch_size' : args.batch_size,
 		'image_size' : args.image_size,
@@ -110,8 +114,8 @@ def main():
 		random.shuffle(index4shuffle)
 
 		while (batch_no+1)*args.batch_size < len(loaded_data):
-			real_images, wrong_images, caption_vectors, z_noise, image_files = get_training_batch(batch_no, args.batch_size,
-				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], loaded_data)
+			real_images, wrong_images, caption_vectors, z_noise, image_files, attributes = get_training_batch(batch_no, args.batch_size,
+				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], args.num_attributes, loaded_data)
 			# print(caption_vectors)
 
 			# DISCR UPDATE
@@ -122,6 +126,8 @@ def main():
 					input_tensors['t_wrong_image'] : wrong_images,
 					input_tensors['t_real_caption'] : caption_vectors,
 					input_tensors['t_z'] : z_noise,
+					input_tensors['t_attributes'] : attributes,
+
 				})
 
 			# print("d1", d1)
@@ -136,6 +142,7 @@ def main():
 					input_tensors['t_wrong_image'] : wrong_images,
 					input_tensors['t_real_caption'] : caption_vectors,
 					input_tensors['t_z'] : z_noise,
+					input_tensors['t_attributes'] : attributes,
 				})
 
 			# GEN UPDATE TWICE, to make sure d_loss does not go to 0
@@ -145,6 +152,7 @@ def main():
 					input_tensors['t_wrong_image'] : wrong_images,
 					input_tensors['t_real_caption'] : caption_vectors,
 					input_tensors['t_z'] : z_noise,
+					input_tensors['t_attributes'] : attributes,
 				})
 
 			# print("LOSSES")
@@ -158,63 +166,82 @@ def main():
 		print("d2", d2)
 		print("d3", d3)
 		print("D", d_loss)
-		if i%5 == 0:
-			print("===== epoch " + str(i) + " =====")
-			save_path = saver.save(sess, "../models/model_after_{}_epoch_{}.ckpt".format(args.data_set, i))
+		# if i%5 == 0:
+		# 	print("===== epoch " + str(i) + " =====")
+		# 	save_path = saver.save(sess, "../models/model_after_{}_epoch_{}.ckpt".format(args.data_set, i))
 
 def load_training_data(data_dir, data_set, caption_vector_length, image_size):
 
-	path2training_data = "../data/pokemon_img/"
-	filenames = [f for f in listdir(path2training_data) if isfile(join(path2training_data, f))]
+	path2data = "../data/"
+	with open(path2data + 'name2attributes.pkl', 'rb') as f:
+		name2attributes = pickle.load(f)
+	with open(path2data + 'name2type.pkl', 'rb') as f:
+		name2type = pickle.load(f)
+	types = ['Psychic', 'Ghost', 'Ground', 'Dragon', 'Rock', 'Grass', 'Normal', 'Bug', 'Fairy', 'Water', 'Fire', 'Fighting', 'Electric', 'Ice', 'Flying', 'Steel', 'Dark', 'Poison']
+
 	images = []
 	pokemon_names = []
 	data = []
-	for filename in filenames:
-		if filename.split(".")[1] == "jpg":
-			# filenames.append(filename)
-			current_data = {}
-			# pokemon_names.append(filename.split(".")[0])
-			name_numerical = np.zeros((caption_vector_length))
-			current_name = filename.split(".")[0]
-			for i, c in enumerate(current_name):
-				c = c.lower()
-				name_numerical[i] = int(ord(c))
-				# if name_numerical[i] == 769:
-				# 	print(filename)
-				# Flabébé
 
-			current_data["name"] = filename.split(".")[0]
-			current_data["name_numerical"] = name_numerical
-			# images.append(Image.open(path2training_data + filename).resize(args.image_size))
-			current_data["image"] = np.asarray(Image.open(path2training_data + filename).resize([image_size,image_size]))
-			data.append(current_data)
+	data_folders = ["../data/mixed_pokemon/", "../data/pokemon_img/"]
+
+	for path2training_data in data_folders:
+		if path2training_data == "../data/mixed_pokemon/":
+			mixed = True
+		else:
+			mixed = False
+
+		filenames = [f for f in listdir(path2training_data) if isfile(join(path2training_data, f))]
+
+		for filename in filenames:
+			if filename.split(".")[1] == "jpg":
+				# try:
+				# filenames.append(filename)
+				current_data = {}
+				# pokemon_names.append(filename.split(".")[0])
+				name_numerical = np.zeros((caption_vector_length))
+				current_name = filename.split(".")[0]
+				for i, c in enumerate(current_name):
+					c = c.lower()
+					name_numerical[i] = int(ord(c))
+					# if name_numerical[i] == 769:
+					# 	print(filename)
+					# Flabébé
+
+				current_data["name"] = filename.split(".")[0]
+				current_data["name_numerical"] = name_numerical
+				# images.append(Image.open(path2training_data + filename).resize(args.image_size))
+				current_data["image"] = np.asarray(Image.open(path2training_data + filename).resize([image_size,image_size]))
+
+				attributes = np.zeros(18)
+				if mixed:
+					current_attributes = name2type[current_name]
+					for type in current_attributes:
+						type_index = types.index(type)
+						attributes[type_index] = 1.0
+				else:
+					current_attributes = name2attributes[current_name.lower()]
+					type1 = current_attributes["Type1"]
+					type1_index = types.index(type1)
+					attributes[type1_index] = 1.0
+					type2 = current_attributes["Type2"]
+					if type2 != "":
+						type2_index = types.index(type2)
+						attributes[type2_index] = 1.0
+
+				# attributes[18] = current_attributes["HP"]
+				# attributes[19] = current_attributes["Attack"]
+				# attributes[20] = current_attributes["Defense"]
+				# attributes[21] = current_attributes["SpAttack"]
+				# attributes[22] = current_attributes["SpDefense"]
+				# attributes[23] = current_attributes["Speed"]
+
+				current_data["attributes"] = attributes
+
+				data.append(current_data)
+
 
 	return data
-
-
-	if data_set == 'flowers':
-		h = h5py.File(join(data_dir, 'flower_tv.hdf5'))
-		flower_captions = {}
-		for ds in h.items():
-			flower_captions[ds[0]] = np.array(ds[1])
-		image_list = [key for key in flower_captions]
-		image_list.sort()
-
-		img_75 = int(len(image_list)*0.75)
-		training_image_list = image_list[0:img_75]
-		random.shuffle(training_image_list)
-
-		return {
-			'image_list' : training_image_list,
-			'captions' : flower_captions,
-			'data_length' : len(training_image_list)
-		}
-
-	else:
-		with open(join(data_dir, 'meta_train.pkl')) as f:
-			meta_data = pickle.load(f)
-		# No preloading for MS-COCO
-		return meta_data
 
 def save_for_vis(data_dir, real_images, generated_images, image_files):
 
@@ -232,7 +259,7 @@ def save_for_vis(data_dir, real_images, generated_images, image_files):
 
 
 def get_training_batch(batch_no, batch_size, image_size, z_dim,
-	caption_vector_length, split, data_dir, data_set, index4shuffle, loaded_data = None):
+	caption_vector_length, split, data_dir, data_set, index4shuffle, num_attributes, loaded_data=None):
 
 	# path2training_data = "../data/training/"
 
@@ -240,6 +267,7 @@ def get_training_batch(batch_no, batch_size, image_size, z_dim,
 	wrong_images = np.zeros((batch_size, image_size, image_size, 3))
 	captions = np.zeros((batch_size, caption_vector_length))
 	image_files = []
+	attributes = np.zeros((batch_size, num_attributes))
 	# wrong_captions = np.zeros((batch_size, caption_vector_length))
 
 	for i in range(batch_size):
@@ -249,9 +277,10 @@ def get_training_batch(batch_no, batch_size, image_size, z_dim,
 		wrong_images[i] = loaded_data[random_index]["image"]
 		captions[i] = current_data["name_numerical"]
 		image_files.append(current_data["name"])
+		attributes[i] = current_data["attributes"]
 
 	z_noise = np.random.uniform(-1, 1, [batch_size, z_dim])
-	return real_images, wrong_images, captions, z_noise, image_files
+	return real_images, wrong_images, captions, z_noise, image_files, attributes
 
 if __name__ == '__main__':
 	main()
