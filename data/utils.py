@@ -65,7 +65,7 @@ def load_training_data(data_dir, data_set, caption_vector_length, image_size):
 				current_data["name"] = filename.split(".")[0]
 				current_data["name_numerical"] = name_numerical
 				# images.append(Image.open(path2training_data + filename).resize(args.image_size))
-				current_data["image"] = np.asarray(Image.open(path2training_data + filename).resize([image_size,image_size]))
+				current_data["image"] = np.asarray(Image.open(path2training_data + filename).resize([image_size,image_size]))/255.0
 
 				attributes = np.zeros(18)
 				if mixed:
