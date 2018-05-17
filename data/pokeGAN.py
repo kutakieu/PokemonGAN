@@ -168,13 +168,13 @@ def train():
     with tf.variable_scope('input'):
         #real and fake image placholders
         real_image = tf.placeholder(tf.float32, shape = [None, HEIGHT, WIDTH, CHANNEL], name='real_image')
-        # random_input = tf.placeholder(tf.float32, shape=[None, args.z_dim+args.num_attributes], name='rand_input')
-        random_input = tf.placeholder(tf.float32, shape=[None, args.z_dim], name='rand_input')
+        random_input = tf.placeholder(tf.float32, shape=[None, args.z_dim+args.num_attributes], name='rand_input')
+        # random_input = tf.placeholder(tf.float32, shape=[None, args.z_dim], name='rand_input')
         is_train = tf.placeholder(tf.bool, name='is_train')
 
     # wgan
-    # fake_image = generator(random_input, args.z_dim+args.num_attributes, is_train)
-    fake_image = generator(random_input, args.z_dim, is_train)
+    fake_image = generator(random_input, args.z_dim+args.num_attributes, is_train)
+    # fake_image = generator(random_input, args.z_dim, is_train)
 
     real_result = discriminator(real_image, is_train)
     fake_result = discriminator(fake_image, is_train, reuse=True)
@@ -235,7 +235,7 @@ def train():
                 # train_image = sess.run(image_batch)
                 real_images, wrong_images, caption_vectors, z_noise, image_files, attributes = get_training_batch(batch_no, args.batch_size,
     				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], args.num_attributes, loaded_data)
-                # z_concat = np.concatenate([train_noise, attributes], axis=1)
+                z_concat = np.concatenate([train_noise, attributes], axis=1)
 
                 batch_no += 1
                 #wgan clip weights
@@ -243,13 +243,16 @@ def train():
 
                 # Update the discriminator
                 _, dLoss = sess.run([trainer_d, d_loss],
-                                    feed_dict={random_input: train_noise, real_image: real_images, is_train: True})
+                                    feed_dict={random_input: z_concat, real_image: real_images, is_train: True})
 
             # Update the generator
             for k in range(g_iters):
-                # train_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, args.z_dim]).astype(np.float32)
+                train_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, args.z_dim]).astype(np.float32)
+                real_images, wrong_images, caption_vectors, z_noise, image_files, attributes = get_training_batch(batch_no, args.batch_size,
+    				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], args.num_attributes, loaded_data)
+                z_concat = np.concatenate([train_noise, attributes], axis=1)
                 _, gLoss = sess.run([trainer_g, g_loss],
-                                    feed_dict={random_input: train_noise, is_train: True})
+                                    feed_dict={random_input: z_concat, is_train: True})
 
             # print 'train:[%d/%d],d_loss:%f,g_loss:%f' % (i, j, dLoss, gLoss)
 
@@ -265,8 +268,9 @@ def train():
             sample_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, args.z_dim]).astype(np.float32)
             real_images, wrong_images, caption_vectors, z_noise, image_files, attributes = get_training_batch(batch_no, args.batch_size,
                 args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], args.num_attributes, loaded_data)
-            # z_concat = np.concatenate([sample_noise, attributes], axis=1)
-            imgtest = sess.run(fake_image, feed_dict={random_input: sample_noise, is_train: False})
+            z_concat = np.concatenate([sample_noise, attributes], axis=1)
+            # imgtest = sess.run(fake_image, feed_dict={random_input: sample_noise, is_train: False})
+            imgtest = sess.run(fake_image, feed_dict={random_input: z_concat, is_train: False})
             # imgtest = imgtest * 255.0
             # imgtest.astype(np.uint8)
             save_images(imgtest, [8,8] ,newPoke_path + '/epoch' + str(i) + '.jpg')
@@ -321,7 +325,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--caption_vector_length', type=int, default=20, help='Caption Vector Length')
 
-    parser.add_argument('--data_dir', type=str, default="./data3/", help='Data Directory')
+    parser.add_argument('--data_dir', type=str, default="./pokemon_img/", help='Data Directory')
 
     parser.add_argument('--learning_rate', type=float, default=0.0002, help='Learning Rate')
 
