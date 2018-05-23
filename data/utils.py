@@ -36,11 +36,11 @@ def load_training_data(data_dir, data_set, caption_vector_length, image_size):
 	pokemon_names = []
 	data = []
 
-	# data_folders = ["../data/mixed_pokemon/", "../data/pokemon_img/"]
+	# data_folders = ["./mixed_pokemon/", "./pokemon_img/"]
 	data_folders = [data_dir]
 
 	for path2training_data in data_folders:
-		if path2training_data == "../data/mixed_pokemon/":
+		if path2training_data == "./mixed_pokemon/":
 			mixed = True
 		else:
 			mixed = False

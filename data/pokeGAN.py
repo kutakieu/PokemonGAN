@@ -62,7 +62,94 @@ def process_data():
 
     return iamges_batch, num_images
 
-def generator(input, random_dim, is_train, reuse=False):
+def rnn(input_, output_size, embedding_size, n_hidden, stddev=0.02, bias_start=0.0, dropout_rate=0.5, reuse=False):
+
+	# with tf.variable_scope("rnn4name", reuse=reuse):
+	# with tf.variable_scope("d_g_rnn4name", reuse=tf.AUTO_REUSE):
+    with tf.variable_scope('rnn4name') as scope:
+        if reuse:
+            scope.reuse_variables()
+        word_embeddings = tf.get_variable("char_embeddings", [150, embedding_size])
+        embedded_word_output = tf.nn.embedding_lookup(word_embeddings, input_)
+        # Forward direction cell
+        lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
+        # lstm_fw_cell = tf.nn.rnn_cell.GRUCell(n_hidden, reuse=False)
+
+        # Backward direction cell
+        lstm_bw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
+        # lstm_bw_cell = tf.nn.rnn_cell.GRUCell(n_hidden, reuse=False)
+
+        lstm_fw_cell = tf.contrib.rnn.DropoutWrapper(lstm_fw_cell, output_keep_prob=dropout_rate)
+        lstm_bw_cell = tf.contrib.rnn.DropoutWrapper(lstm_bw_cell, output_keep_prob=dropout_rate)
+
+        outputs, states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, embedded_word_output, dtype=tf.float32)
+
+        fw_output = outputs[0]
+        bw_output = outputs[1]
+        lstm_output = tf.concat((fw_output, bw_output), 2)
+
+        matrix = tf.get_variable("Weight", [n_hidden*2, output_size], tf.float32, tf.random_normal_initializer(stddev=stddev))
+
+        bias = tf.get_variable("bias", [output_size], initializer=tf.constant_initializer(bias_start))
+
+        return tf.matmul(lstm_output[:,-1,:], matrix) + bias
+
+def cnn_rnn(input_, output_size, embedding_size, n_hidden, stddev=0.02, bias_start=0.0, dropout_rate=0.5, reuse=False):
+
+    with tf.variable_scope('cnn_rnn') as scope:
+        if reuse:
+            scope.reuse_variables()
+
+        word_embeddings = tf.get_variable("char_embeddings", [150, embedding_size])
+        embedded_word_output = tf.nn.embedding_lookup(word_embeddings, input_)
+
+        conv1 = tf.layers.conv1d(embedded_word_output, 384, 4, strides=1)
+        act1 = lrelu(conv1, n='act1')
+        # pooled1 = tf.layers.max_pooling1d(act1, pool_size=2, strides=2)
+
+        conv2 = tf.layers.conv1d(act1, 512, 4, strides=1)
+        act2 = lrelu(conv2, n='act2')
+        # pooled2 = tf.layers.max_pooling1d(act2, pool_size=2, strides=2)
+
+        conv3 = tf.layers.conv1d(act2, 256, 4, strides=1)
+        act3 = lrelu(conv3, n='act3')
+        # pooled3 = tf.layers.max_pooling1d(act3, pool_size=2, strides=2)
+
+
+        # word_embeddings = tf.get_variable("char_embeddings", [150, embedding_size])
+        # embedded_word_output = tf.nn.embedding_lookup(word_embeddings, input_)
+
+        # Forward direction cell
+        # lstm_fw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
+        lstm_fw_cell = tf.nn.rnn_cell.GRUCell(n_hidden)
+
+        # Backward direction cell
+        # lstm_bw_cell = tf.nn.rnn_cell.BasicLSTMCell(n_hidden, forget_bias=1.0, reuse=False)
+        lstm_bw_cell = tf.nn.rnn_cell.GRUCell(n_hidden)
+
+        lstm_fw_cell = tf.contrib.rnn.DropoutWrapper(lstm_fw_cell, output_keep_prob=dropout_rate)
+        lstm_bw_cell = tf.contrib.rnn.DropoutWrapper(lstm_bw_cell, output_keep_prob=dropout_rate)
+
+        outputs, states = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, act3, dtype=tf.float32)
+
+        fw_output = outputs[0]
+        bw_output = outputs[1]
+        lstm_output = tf.concat((fw_output, bw_output), 2)
+
+        matrix = tf.get_variable("Weight", [n_hidden*2, output_size], tf.float32, tf.random_normal_initializer(stddev=stddev))
+
+        bias = tf.get_variable("bias", [output_size], initializer=tf.constant_initializer(bias_start))
+
+        # return tf.matmul(lstm_output[:,-1,:], matrix) + bias
+        return tf.matmul(tf.reduce_mean(lstm_output, axis=1), matrix) + bias
+
+
+def generator(input, random_dim, t_caption, is_train, reuse=False):
+
+    # reduced_text_embedding = rnn(t_caption, args.t_dim, args.word_dim, args.rnn_hidden)
+    reduced_text_embedding = cnn_rnn(t_caption, args.t_dim, args.word_dim, args.rnn_hidden)
+    input = tf.concat([input, reduced_text_embedding], axis=1)
+
     c4, c8, c16, c32, c64 = 512, 256, 128, 64, 32 # channel num
     s4 = 4
     output_dim = CHANNEL  # RGB image
@@ -113,7 +200,10 @@ def generator(input, random_dim, is_train, reuse=False):
         return act6
 
 
-def discriminator(input, is_train, reuse=False):
+def discriminator(input, t_caption, is_train, reuse=False, t_text_embedding=None):
+    # reduced_text_embedding = rnn(t_caption, args.t_dim, args.word_dim, args.rnn_hidden, reuse=True)
+    reduced_text_embedding = cnn_rnn(t_caption, args.t_dim, args.word_dim, args.rnn_hidden, reuse=True)
+
     c2, c4, c8, c16 = 64, 128, 256, 512  # channel num: 64, 128, 256, 512
     with tf.variable_scope('dis') as scope:
         if reuse:
@@ -149,16 +239,17 @@ def discriminator(input, is_train, reuse=False):
         fc1 = tf.reshape(act4, shape=[-1, dim], name='fc1')
 
 
-        w2 = tf.get_variable('w2', shape=[fc1.shape[-1], 1], dtype=tf.float32,
+        w2 = tf.get_variable('w2', shape=[fc1.shape[-1]+args.t_dim, 1], dtype=tf.float32,
                              initializer=tf.truncated_normal_initializer(stddev=0.02))
         b2 = tf.get_variable('b2', shape=[1], dtype=tf.float32,
                              initializer=tf.constant_initializer(0.0))
 
         # wgan just get rid of the sigmoid
-        logits = tf.add(tf.matmul(fc1, w2), b2, name='logits')
+        fc1 = tf.concat([fc1, reduced_text_embedding], axis=1)
+        wgan_logits = tf.add(tf.matmul(fc1, w2), b2, name='logits')
         # dcgan
-        acted_out = tf.nn.sigmoid(logits)
-        return logits #, acted_out
+        dcgan_logits = tf.nn.sigmoid(wgan_logits)
+        return wgan_logits , dcgan_logits
 
 
 def train():
@@ -167,19 +258,25 @@ def train():
 
     with tf.variable_scope('input'):
         #real and fake image placholders
-        real_image = tf.placeholder(tf.float32, shape = [None, HEIGHT, WIDTH, CHANNEL], name='real_image')
+        real_image = tf.placeholder(tf.float32, shape=[None, HEIGHT, WIDTH, CHANNEL], name='real_image')
         random_input = tf.placeholder(tf.float32, shape=[None, args.z_dim+args.num_attributes], name='rand_input')
         # random_input = tf.placeholder(tf.float32, shape=[None, args.z_dim], name='rand_input')
         is_train = tf.placeholder(tf.bool, name='is_train')
+        t_attributes = tf.placeholder('float32', shape=[None, args.num_attributes])
+        t_caption = tf.placeholder('int32', [None, args.caption_vector_length], name='caption_input')
 
     # wgan
-    fake_image = generator(random_input, args.z_dim+args.num_attributes, is_train)
+    fake_image = generator(random_input, args.z_dim+args.num_attributes+args.t_dim, t_caption, is_train)
     # fake_image = generator(random_input, args.z_dim, is_train)
 
-    real_result = discriminator(real_image, is_train)
-    fake_result = discriminator(fake_image, is_train, reuse=True)
+    real_result, logits_real = discriminator(real_image, t_caption, is_train)
+    fake_result, logits_fake = discriminator(fake_image, t_caption, is_train, reuse=True)
 
     d_loss = tf.reduce_mean(fake_result) - tf.reduce_mean(real_result)  # This optimizes the discriminator.
+    #TODO:put conditional cost function using caption
+    # d_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits_real, labels=t_attributes), axis=1)
+    # d_loss += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits_fake, labels=t_attributes), axis=1)
+
     g_loss = -tf.reduce_mean(fake_result)  # This optimizes the generator.
 
 
@@ -193,12 +290,8 @@ def train():
     # clip discriminator weights
     d_clip = [v.assign(tf.clip_by_value(v, -0.01, 0.01)) for v in d_vars]
 
+    # image_batch, samples_num = process_data()
 
-    batch_size = BATCH_SIZE
-    image_batch, samples_num = process_data()
-
-    batch_num = int(samples_num / batch_size)-1
-    total_batch = 0
     sess = tf.Session()
     saver = tf.train.Saver()
     sess.run(tf.local_variables_initializer())
@@ -212,9 +305,9 @@ def train():
     # threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
     loaded_data = load_training_data(args.data_dir, args.data_set, args.caption_vector_length, args.image_size)
-
-    print('total training sample num:%d' % samples_num)
-    print('batch size: %d, batch num per epoch: %d, epoch num: %d' % (batch_size, batch_num, EPOCH))
+    batch_num = int(len(loaded_data) / args.batch_size)
+    print('total training sample num:%d' % len(loaded_data))
+    print('batch size: %d, batch num per epoch: %d, epoch num: %d' % (args.batch_size, batch_num, EPOCH))
     print('start training...')
 
     index4shuffle = [i for i in range(len(loaded_data))]
@@ -229,13 +322,15 @@ def train():
             random.shuffle(index4shuffle)
             batch_no = 0
 
-            train_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, args.z_dim]).astype(np.float32)
+            train_noise = np.random.uniform(-1.0, 1.0, size=[args.batch_size, args.z_dim]).astype(np.float32)
             for k in range(d_iters):
                 #print(k)
                 # train_image = sess.run(image_batch)
                 real_images, wrong_images, caption_vectors, z_noise, image_files, attributes = get_training_batch(batch_no, args.batch_size,
     				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], args.num_attributes, loaded_data)
+
                 z_concat = np.concatenate([train_noise, attributes], axis=1)
+                # z_concat = np.concatenate([z_concat, reduced_text_embedding], axis=1)
 
                 batch_no += 1
                 #wgan clip weights
@@ -243,16 +338,16 @@ def train():
 
                 # Update the discriminator
                 _, dLoss = sess.run([trainer_d, d_loss],
-                                    feed_dict={random_input: z_concat, real_image: real_images, is_train: True})
+                                    feed_dict={random_input: z_concat, real_image: real_images, is_train: True, t_attributes: attributes, t_caption: caption_vectors})
 
             # Update the generator
             for k in range(g_iters):
-                train_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, args.z_dim]).astype(np.float32)
+                train_noise = np.random.uniform(-1.0, 1.0, size=[args.batch_size, args.z_dim]).astype(np.float32)
                 real_images, wrong_images, caption_vectors, z_noise, image_files, attributes = get_training_batch(batch_no, args.batch_size,
     				args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], args.num_attributes, loaded_data)
                 z_concat = np.concatenate([train_noise, attributes], axis=1)
                 _, gLoss = sess.run([trainer_g, g_loss],
-                                    feed_dict={random_input: z_concat, is_train: True})
+                                    feed_dict={random_input: z_concat, is_train: True, t_caption: caption_vectors})
 
             # print 'train:[%d/%d],d_loss:%f,g_loss:%f' % (i, j, dLoss, gLoss)
 
@@ -265,12 +360,12 @@ def train():
             # save images
             if not os.path.exists(newPoke_path):
                 os.makedirs(newPoke_path)
-            sample_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, args.z_dim]).astype(np.float32)
+            sample_noise = np.random.uniform(-1.0, 1.0, size=[args.batch_size, args.z_dim]).astype(np.float32)
             real_images, wrong_images, caption_vectors, z_noise, image_files, attributes = get_training_batch(batch_no, args.batch_size,
                 args.image_size, args.z_dim, args.caption_vector_length, 'train', args.data_dir, args.data_set, index4shuffle[batch_no*args.batch_size:(batch_no+1)*args.batch_size], args.num_attributes, loaded_data)
             z_concat = np.concatenate([sample_noise, attributes], axis=1)
             # imgtest = sess.run(fake_image, feed_dict={random_input: sample_noise, is_train: False})
-            imgtest = sess.run(fake_image, feed_dict={random_input: z_concat, is_train: False})
+            imgtest = sess.run(fake_image, feed_dict={random_input: z_concat, is_train: False, t_attributes: attributes, t_caption: caption_vectors})
             # imgtest = imgtest * 255.0
             # imgtest.astype(np.uint8)
             save_images(imgtest, [8,8] ,newPoke_path + '/epoch' + str(i) + '.jpg')
